@@ -21,7 +21,7 @@ from collections import defaultdict
 #from termcolor import colored as cl
 import calendar
 from datetime import timedelta
-from datatypes.trade_data import *
+from broker_platform.datatypes.trade_data import *
 
 #cwd = os.chdir("C:/1Ravee/PythonAlgo/authenticate")
 #defines

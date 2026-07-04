@@ -2,7 +2,7 @@
 
 
 import threading
-from pal.utility_manager import *
+from broker_platform.pal.utility_manager import *
 import time
 
 class QuoteUtility:
