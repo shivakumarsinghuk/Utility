@@ -6,7 +6,6 @@ Zerodha Kite Connect - Historical Data
 
 import datetime
 from nsepython import *
-import pywhatkit
 import pyautogui
 #import datetime
 from pynput.keyboard import Key, Controller
@@ -21,7 +20,7 @@ from collections import defaultdict
 #from termcolor import colored as cl
 import calendar
 from datetime import timedelta
-from broker_platform.datatypes.trade_data import *
+from DataTypes.trade_data import *
 
 #cwd = os.chdir("C:/1Ravee/PythonAlgo/authenticate")
 #defines
