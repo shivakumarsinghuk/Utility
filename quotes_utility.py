@@ -6,8 +6,8 @@ from BrokerUtility.pal.utility_manager import *
 import time
 
 class QuoteUtility:
-    def __init__(self, p_trade_utility, p_interval=2):
-        self.trade_utility = p_trade_utility
+    def __init__(self, p_interval=2):
+        self.trade_utility = None
         self.lst_stocks = []
         self.lst_get_quote_req = []
         self.interval = p_interval
@@ -18,6 +18,10 @@ class QuoteUtility:
         # start the thread
         self.execute_thread.start()
 
+
+    def set_trade_utility(self, p_trade_utility):
+        self.trade_utility = p_trade_utility
+
     def get_thread_info(self):
         return self.execute_thread
 
@@ -27,7 +31,8 @@ class QuoteUtility:
             #check whether stocks list having atleast one stock
             if len(self.lst_stocks) > 0:
                 time.sleep(4)
-                self.dict_quote_data = self.trade_utility.get_broker_utility().get_quotes(self.lst_get_quote_req)
+                if self.trade_utility:
+                    self.dict_quote_data = self.trade_utility.get_broker_utility().get_quotes(self.lst_get_quote_req)
         print("Getquote Stopped")
 
     def add_stocks(self, p_lst_stocks, p_lst_market_type):
