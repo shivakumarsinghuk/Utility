@@ -21,6 +21,7 @@ from collections import defaultdict
 import calendar
 from datetime import timedelta
 from DataTypes.trade_data import *
+from DataTypes.defines import *
 
 #cwd = os.chdir("C:/1Ravee/PythonAlgo/authenticate")
 #defines
@@ -290,6 +291,14 @@ def compute_vwap(candle_data, last_loc=0):
     #round off to 2 decimals
     vwap = round((cum_typical_price / cum_vol), 2)
     return vwap
+
+def compute_bollinger_bands(candle_data, period=20, std_dev=2):
+    close_col = candle_data[CLOSE_PRICE]
+    middle_band = close_col.rolling(window=period).mean()
+    rolling_std = close_col.rolling(window=period).std()
+    upper_band = middle_band + (rolling_std * std_dev)
+    lower_band = middle_band - (rolling_std * std_dev)
+    return upper_band, middle_band, lower_band
 
 def compute_pivot_cpr(candle_data):
     pivot_point = 0.0
