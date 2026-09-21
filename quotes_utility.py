@@ -20,7 +20,8 @@ class QuoteUtility:
 
 
     def set_trade_utility(self, p_trade_utility):
-        self.trade_utility = p_trade_utility
+        if self.trade_utility is None:
+            self.trade_utility = p_trade_utility
 
     def get_thread_info(self):
         return self.execute_thread
