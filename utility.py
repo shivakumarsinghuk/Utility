@@ -6,7 +6,6 @@ Zerodha Kite Connect - Historical Data
 
 import datetime
 from nsepython import *
-import pyautogui
 #import datetime
 from pynput.keyboard import Key, Controller
 from datetime import datetime
@@ -457,6 +456,7 @@ def compute_rsi(stock_data, periods=14):
     return current_day_avg_gain, current_day_avg_loss, round(rsi, 2)
 
 def send_whatsapp_message(str_number, str_message):
+    import pyautogui
     #pywhatkit.sendwhatmsg(phone_no=str_number, message=str_message, time_hour=8, time_min=21,tab_close=True)
     pywhatkit.sendwhatmsg_instantly(phone_no=str_number,message=str_message,wait_time=10,tab_close=True,close_time=10)
     time.sleep(10)
