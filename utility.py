@@ -18,8 +18,15 @@ from collections import defaultdict
 #from termcolor import colored as cl
 import calendar
 from datetime import timedelta
+from zoneinfo import ZoneInfo
 from DataTypes.trade_data import *
 from DataTypes.defines import *
+
+IST = ZoneInfo("Asia/Kolkata")
+
+
+def _now_ist():
+    return datetime.now(IST).replace(tzinfo=None)
 
 #cwd = os.chdir("C:/1Ravee/PythonAlgo/authenticate")
 #defines
@@ -143,8 +150,8 @@ def get_modulus_time_by_interver(str_interval):
     dict_time_to_string["hour"] = "%H"
     interval_value, interval_type = separate_numbers_text_in_string(str_interval)
     interval_value = int(interval_value)
-    print(int(datetime.now().time().strftime(dict_time_to_string[interval_type])))
-    i_modulus_time = int(datetime.now().time().strftime(dict_time_to_string[interval_type])) % interval_value
+    print(int(_now_ist().time().strftime(dict_time_to_string[interval_type])))
+    i_modulus_time = int(_now_ist().time().strftime(dict_time_to_string[interval_type])) % interval_value
     return i_modulus_time
 
 def get_next_trade_remaining_time(i_interval_value, str_interval_type):
@@ -203,10 +210,10 @@ def calculate_percentage_value(number, percentage):
 
 def is_trade_start_time_expired(start_time, i_interval_value=0, str_interval_type="minute"):
     is_start_time_expired = False
-    if (datetime.now().time() > start_time.time()):
-        print(datetime.now().time(), start_time.time())
+    if (_now_ist().time() > start_time.time()):
+        print(_now_ist().time(), start_time.time())
         i_remaining_time = get_next_trade_remaining_time(i_interval_value, str_interval_type)
-        if (datetime.now() - start_time).seconds > i_remaining_time:
+        if (_now_ist() - start_time).seconds > i_remaining_time:
             is_start_time_expired = True
     return is_start_time_expired
 
@@ -751,19 +758,19 @@ def get_entry_price_index(entry_price, stock_data):
     return entry_price_index
 
 def get_current_time(self):
-    return time.strftime("%H:%M:%S", time.localtime())
+    return _now_ist().strftime("%H:%M:%S")
 
 def get_test_mode_start_end_time(self):
-    return (datetime.now() + timedelta(minutes=1)).strftime("%H:%M:%S"), \
-        (datetime.now() + timedelta(minutes=1)).strftime("%H:%M:%S"), \
-        (datetime.now() + timedelta(minutes=4)).strftime("%H:%M:%S"), \
-        (datetime.now() + timedelta(minutes=3)).strftime("%H:%M:%S")
+    return (_now_ist() + timedelta(minutes=1)).strftime("%H:%M:%S"), \
+        (_now_ist() + timedelta(minutes=1)).strftime("%H:%M:%S"), \
+        (_now_ist() + timedelta(minutes=4)).strftime("%H:%M:%S"), \
+        (_now_ist() + timedelta(minutes=3)).strftime("%H:%M:%S")
 
 def get_sleep_time_from_time(p_time):
-    if (datetime.now().time() > p_time.time()):
-        return int((datetime.now() - p_time).seconds)
+    if (_now_ist().time() > p_time.time()):
+        return int((_now_ist() - p_time).seconds)
     else:
-        return int((p_time - datetime.now()).seconds)
+        return int((p_time - _now_ist()).seconds)
 
 def get_candle_time_series(p_interval, p_start_time="09:15:00", p_end_time="15:30:00"):
     lst_time_series = []
@@ -929,7 +936,7 @@ def to_python_type(value):
 
 def get_previous_expirty_day(p_week_day_no, p_time_delta = 0):
     # Get today's date
-    today = datetime.today() - timedelta(days=p_time_delta)
+    today = _now_ist() - timedelta(days=p_time_delta)
 
     # Find the most recent Tuesday§
     days_since_tuesday = (today.weekday() - 1) % 7

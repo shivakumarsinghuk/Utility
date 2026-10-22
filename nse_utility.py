@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 
 from Utility.utility import *
-import datetime as dt
 import pandas_market_calendars as mcal
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -37,9 +36,9 @@ class nse_utitlity:
         is_next_week_monthly_expiry = False
 
         if option_name == "NIFTY":
-            lst_expiry_dates = generate_weekly_expiry_dates(datetime.now() + timedelta(preset), 1)
+            lst_expiry_dates = generate_weekly_expiry_dates(datetime.now(IST) + timedelta(preset), 1)
         else:
-            lst_expiry_dates = generate_monthly_expiry_dates(datetime.now() + timedelta(preset), 1)
+            lst_expiry_dates = generate_monthly_expiry_dates(datetime.now(IST) + timedelta(preset), 1)
 
         current_week_expiry_date = lst_expiry_dates[0]
         next_week_expiry_date = lst_expiry_dates[1]
@@ -51,7 +50,7 @@ class nse_utitlity:
 
         # update is expiry day
         is_expiry_day = (
-                    current_week_expiry_date == (dt.date.today() - timedelta(days=preset)).strftime("%d-%b-%Y"))
+                    current_week_expiry_date == (datetime.now(IST).date() - timedelta(days=preset)).strftime("%d-%b-%Y"))
 
         print("is_current_week_monthly_expiry: ", is_current_week_monthly_expiry)
         if is_current_week_monthly_expiry:
@@ -79,8 +78,9 @@ class nse_utitlity:
             print(key)
 
     def get_prev_day_trade_date(self, preset=0):
-        str_start_date = (dt.date.today() - timedelta(days=preset + 30)).strftime('%Y-%m-%d')
-        str_end_date = (dt.date.today() - timedelta(days=preset)).strftime('%Y-%m-%d')
+        today = datetime.now(IST).date()
+        str_start_date = (today - timedelta(days=preset + 30)).strftime('%Y-%m-%d')
+        str_end_date = (today - timedelta(days=preset)).strftime('%Y-%m-%d')
         #get the trade dates
         nyse = mcal.get_calendar('NSE')
         prev_date_object = nyse.schedule(start_date=str_start_date, end_date=str_end_date)[::-1]['market_open'].values[1]
