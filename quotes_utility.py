@@ -13,6 +13,8 @@ class QuoteUtility:
         self.interval = p_interval
         self.execute_thread = threading.Thread(target=self.execute)
         self.dict_quote_data = {}
+        self._ltp_high_watermarks = {}
+        self._quote_lock = threading.Lock()
         self.is_stopped = False
 
         # start the thread
@@ -33,7 +35,9 @@ class QuoteUtility:
             if len(self.lst_stocks) > 0:
                 time.sleep(4)
                 if self.trade_utility:
-                    self.dict_quote_data = self.trade_utility.get_broker_utility().get_quotes(self.lst_get_quote_req)
+                    quote_data = self.trade_utility.get_broker_utility().get_quotes(self.lst_get_quote_req)
+                    self._record_ltp_high_watermarks(quote_data)
+                    self.dict_quote_data = quote_data
         print("Getquote Stopped")
 
     def add_stocks(self, p_lst_stocks, p_lst_market_type):
@@ -43,7 +47,9 @@ class QuoteUtility:
                 obj_get_quotes_req_data = get_quote_request_data(p_symbol=stock, p_market_type=p_lst_market_type[index])
                 self.lst_get_quote_req.append(obj_get_quotes_req_data)
         #updare the dict quote data
-        self.dict_quote_data = self.trade_utility.get_broker_utility().get_quotes(self.lst_get_quote_req)
+        quote_data = self.trade_utility.get_broker_utility().get_quotes(self.lst_get_quote_req)
+        self._record_ltp_high_watermarks(quote_data)
+        self.dict_quote_data = quote_data
 
     def remove_stock(self, p_str_stock):
         index = 0
@@ -55,6 +61,27 @@ class QuoteUtility:
 
     def get_quote_data(self):
         return self.dict_quote_data
+
+    def _record_ltp_high_watermarks(self, quote_data):
+        with self._quote_lock:
+            for symbol, quote in quote_data.items():
+                ltp = float(quote.ltp)
+                if ltp > 0:
+                    self._ltp_high_watermarks[symbol] = max(
+                        ltp, self._ltp_high_watermarks.get(symbol, ltp))
+
+    def get_ltp_high_watermark(self, symbol):
+        with self._quote_lock:
+            return self._ltp_high_watermarks.get(symbol)
+
+    def reset_ltp_high_watermark(self, symbol):
+        quote = self.dict_quote_data.get(symbol)
+        ltp = float(quote.ltp) if quote is not None else 0.0
+        with self._quote_lock:
+            if ltp > 0:
+                self._ltp_high_watermarks[symbol] = ltp
+            else:
+                self._ltp_high_watermarks.pop(symbol, None)
 
     def stop(self):
         self.is_stopped = True
