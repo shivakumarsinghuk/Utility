@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Build five-minute FYERS candles from full-mode data socket updates."""
 
-from datetime import datetime
+from datetime import time as datetime_time
 from numbers import Real
 from zoneinfo import ZoneInfo
 
@@ -11,6 +11,9 @@ from DataTypes.defines import (CANDLE_TYPE, CLOSE_PRICE, DATE_TIME, HIGH_PRICE,
                                LOW_PRICE, OPEN_PRICE, VOLUME_DATA)
 
 IST = ZoneInfo("Asia/Kolkata")
+NSE_SESSION_START = datetime_time(9, 15)
+NSE_SESSION_END = datetime_time(15, 30)
+FIVE_MINUTE_INTERVAL = 5
 FIVE_MINUTE_CANDLE_COLUMNS = [DATE_TIME, OPEN_PRICE, HIGH_PRICE, LOW_PRICE,
                               CLOSE_PRICE, VOLUME_DATA, CANDLE_TYPE]
 
@@ -29,7 +32,11 @@ def _empty_candle_data():
 
 
 def _to_ist_naive_timestamp(value):
-    """Normalize an epoch-second or datetime-like tick time to naive IST."""
+    """Convert an FYERS epoch or datetime value to a timezone-naive IST value.
+
+    FYERS event times are epoch seconds. Datetime-like fallbacks are accepted
+    for stored CSV data and tests; naive values are interpreted as IST.
+    """
     if value is None or pd.isna(value):
         return pd.NaT
 
@@ -67,6 +74,8 @@ class FyersCandleUtility:
 
     @staticmethod
     def _tick_timestamp(row):
+        # Prefer exchange event time, then feed time; local receipt time is the
+        # fallback for payloads that omit both exchange timestamps.
         for column in ("last_traded_time", "exch_feed_time", "received_at"):
             if column in row.index and pd.notna(row[column]):
                 timestamp = _to_ist_naive_timestamp(row[column])
@@ -82,6 +91,11 @@ class FyersCandleUtility:
         carrying the full candle schema. Missing time or LTP messages cannot
         form OHLC candles and are ignored. The NSE session window is 09:15
         inclusive through 15:30 exclusive, in IST.
+
+        Volume is a delta from FYERS' cumulative day volume. The first event for
+        each symbol/day establishes a baseline; repeated or decreasing values
+        add no volume. Exact duplicate callbacks remain in the raw tick store,
+        but are excluded from candle calculations.
         """
         if p_symbols is None:
             requested_symbols = []
@@ -114,8 +128,8 @@ class FyersCandleUtility:
 
         session_time = ticks["_timestamp"].dt.time
         ticks = ticks.loc[
-            (session_time >= datetime.strptime("09:15:00", "%H:%M:%S").time())
-            & (session_time < datetime.strptime("15:30:00", "%H:%M:%S").time())
+            (session_time >= NSE_SESSION_START)
+            & (session_time < NSE_SESSION_END)
         ].copy()
         if ticks.empty:
             return {symbol: _empty_candle_data() for symbol in all_symbols}
@@ -139,11 +153,13 @@ class FyersCandleUtility:
                     ticks.at[row_index, "_volume_delta"] = cumulative_volume - previous_volume
                     high_water_by_symbol_day[symbol_day] = cumulative_volume
 
-        # Anchor bars to each day's 09:15 open. Sorting is stable so equal-time
-        # updates retain their original callback order for open/close selection.
-        session_open = ticks["_timestamp"].dt.normalize() + pd.Timedelta(hours=9, minutes=15)
+        # Bars start at the NSE 09:15 open rather than midnight; stable sorting
+        # below preserves callback order for equal-time open/close selection.
+        session_open = ticks["_timestamp"].dt.normalize() + pd.Timedelta(
+            hours=NSE_SESSION_START.hour, minutes=NSE_SESSION_START.minute
+        )
         minutes_from_open = (ticks["_timestamp"] - session_open).dt.total_seconds() // 60
-        bucket_minutes = (minutes_from_open // 5) * 5
+        bucket_minutes = (minutes_from_open // FIVE_MINUTE_INTERVAL) * FIVE_MINUTE_INTERVAL
         ticks["_bucket"] = session_open + pd.to_timedelta(bucket_minutes, unit="m")
         ticks = ticks.sort_values(["symbol", "_timestamp", "_receive_order"], kind="mergesort")
 

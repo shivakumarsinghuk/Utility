@@ -8,6 +8,8 @@ import pandas as pd
 from .fyers_candle_utility import FyersCandleUtility
 
 class QuoteUtility:
+    """Poll REST quotes and optionally expose live FYERS ticks and candles."""
+
     def __init__(self, p_interval=2):
         self.trade_utility = None
         self.lst_stocks = []
@@ -17,6 +19,8 @@ class QuoteUtility:
         self.dict_quote_data = {}
         self.is_stopped = False
         self.stop_event = threading.Event()
+        # The WebSocket is optional and discovered from broker methods at
+        # runtime, so brokers without the FYERS stream keep their existing path.
         self.data_websocket = None
         self.fyers_candle_utility = FyersCandleUtility()
 
@@ -45,6 +49,7 @@ class QuoteUtility:
         print("Getquote Stopped")
 
     def _get_data_websocket(self):
+        """Lazily acquire a broker's optional stream using the existing interface."""
         if self.data_websocket is not None or self.trade_utility is None:
             return self.data_websocket
 
@@ -55,6 +60,7 @@ class QuoteUtility:
         return self.data_websocket
 
     def _get_websocket_symbol(self, p_quote_req_data):
+        """Ask the broker to format a quote request as its feed symbol."""
         if self.trade_utility is None:
             return None
         broker_utility = self.trade_utility.get_broker_utility()
@@ -67,12 +73,12 @@ class QuoteUtility:
     def add_stocks(self, p_lst_stocks, p_lst_market_type):
         lst_new_quote_requests = []
         for index, stock in enumerate(p_lst_stocks):
-            if not stock in self.lst_stocks:
+            if stock not in self.lst_stocks:
                 self.lst_stocks.append(stock)
                 obj_get_quotes_req_data = get_quote_request_data(p_symbol=stock, p_market_type=p_lst_market_type[index])
                 self.lst_get_quote_req.append(obj_get_quotes_req_data)
                 lst_new_quote_requests.append(obj_get_quotes_req_data)
-        #updare the dict quote data
+        # Keep the existing REST quote snapshot and return shape unchanged.
         self.dict_quote_data = self.trade_utility.get_broker_utility().get_quotes(self.lst_get_quote_req)
 
         if lst_new_quote_requests:
@@ -105,11 +111,13 @@ class QuoteUtility:
         return self.dict_quote_data
 
     def get_tick_data(self):
+        """Return the broker's accumulated raw tick snapshot, if available."""
         if self.data_websocket is None:
             return pd.DataFrame()
         return self.data_websocket.get_tick_data()
 
     def get_5min_candle_data(self):
+        """Return candle frames keyed by the same bare symbols as REST quotes."""
         if self.data_websocket is None:
             return {}
 
@@ -125,6 +133,7 @@ class QuoteUtility:
                 for websocket_symbol, quote_symbol in dict_quote_symbols.items()}
 
     def stop(self):
+        """Stop the quote polling loop and close the optional market-data stream."""
         self.is_stopped = True
         self.stop_event.set()
         if self.data_websocket is not None:
