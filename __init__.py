@@ -6,5 +6,6 @@ from .utility import *
 from .nse_utility import *
 from .gsheet_utility import *
 from .quotes_utility import *
+from .fyers_candle_utility import *
 
 
