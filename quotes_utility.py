@@ -17,6 +17,8 @@ class QuoteUtility:
         self.interval = p_interval
         self.execute_thread = threading.Thread(target=self.execute)
         self.dict_quote_data = {}
+        self._ltp_high_watermarks = {}
+        self._quote_lock = threading.Lock()
         self.is_stopped = False
         self.stop_event = threading.Event()
         # The WebSocket is optional and discovered from broker methods at
@@ -43,9 +45,9 @@ class QuoteUtility:
                 if self.stop_event.wait(4):
                     break
                 if self.trade_utility:
-                    self.dict_quote_data = self.trade_utility.get_broker_utility().get_quotes(self.lst_get_quote_req)
-            else:
-                self.stop_event.wait(self.interval)
+                    quote_data = self.trade_utility.get_broker_utility().get_quotes(self.lst_get_quote_req)
+                    self._record_ltp_high_watermarks(quote_data)
+                    self.dict_quote_data = quote_data
         print("Getquote Stopped")
 
     def _get_data_websocket(self):
@@ -77,9 +79,10 @@ class QuoteUtility:
                 self.lst_stocks.append(stock)
                 obj_get_quotes_req_data = get_quote_request_data(p_symbol=stock, p_market_type=p_lst_market_type[index])
                 self.lst_get_quote_req.append(obj_get_quotes_req_data)
-                lst_new_quote_requests.append(obj_get_quotes_req_data)
-        # Keep the existing REST quote snapshot and return shape unchanged.
-        self.dict_quote_data = self.trade_utility.get_broker_utility().get_quotes(self.lst_get_quote_req)
+        #updare the dict quote data
+        quote_data = self.trade_utility.get_broker_utility().get_quotes(self.lst_get_quote_req)
+        self._record_ltp_high_watermarks(quote_data)
+        self.dict_quote_data = quote_data
 
         if lst_new_quote_requests:
             data_websocket = self._get_data_websocket()
@@ -131,6 +134,26 @@ class QuoteUtility:
             self.data_websocket.get_tick_data(), list(dict_quote_symbols))
         return {quote_symbol: dict_fyers_candles[websocket_symbol]
                 for websocket_symbol, quote_symbol in dict_quote_symbols.items()}
+    def _record_ltp_high_watermarks(self, quote_data):
+        with self._quote_lock:
+            for symbol, quote in quote_data.items():
+                ltp = float(quote.ltp)
+                if ltp > 0:
+                    self._ltp_high_watermarks[symbol] = max(
+                        ltp, self._ltp_high_watermarks.get(symbol, ltp))
+
+    def get_ltp_high_watermark(self, symbol):
+        with self._quote_lock:
+            return self._ltp_high_watermarks.get(symbol)
+
+    def reset_ltp_high_watermark(self, symbol):
+        quote = self.dict_quote_data.get(symbol)
+        ltp = float(quote.ltp) if quote is not None else 0.0
+        with self._quote_lock:
+            if ltp > 0:
+                self._ltp_high_watermarks[symbol] = ltp
+            else:
+                self._ltp_high_watermarks.pop(symbol, None)
 
     def stop(self):
         """Stop the quote polling loop and close the optional market-data stream."""
