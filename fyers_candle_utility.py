@@ -84,7 +84,8 @@ class FyersCandleUtility:
         return pd.NaT
 
     def build_5min_candles(self, p_df_ticks: pd.DataFrame,
-                           p_symbols=None) -> dict[str, pd.DataFrame]:
+                           p_symbols=None,
+                           interval_minutes=FIVE_MINUTE_INTERVAL) -> dict[str, pd.DataFrame]:
         """Return ``{FYERS symbol: candle DataFrame}`` for the supplied ticks.
 
         Requested symbols with no valid ticks are returned with an empty frame
@@ -103,6 +104,8 @@ class FyersCandleUtility:
             requested_symbols = [p_symbols]
         else:
             requested_symbols = list(dict.fromkeys(p_symbols))
+        if interval_minutes <= 0:
+            raise ValueError("interval_minutes must be a positive integer")
 
         if p_df_ticks is None or p_df_ticks.empty or "symbol" not in p_df_ticks.columns:
             return {symbol: _empty_candle_data() for symbol in requested_symbols}
@@ -159,7 +162,7 @@ class FyersCandleUtility:
             hours=NSE_SESSION_START.hour, minutes=NSE_SESSION_START.minute
         )
         minutes_from_open = (ticks["_timestamp"] - session_open).dt.total_seconds() // 60
-        bucket_minutes = (minutes_from_open // FIVE_MINUTE_INTERVAL) * FIVE_MINUTE_INTERVAL
+        bucket_minutes = (minutes_from_open // interval_minutes) * interval_minutes
         ticks["_bucket"] = session_open + pd.to_timedelta(bucket_minutes, unit="m")
         ticks = ticks.sort_values(["symbol", "_timestamp", "_receive_order"], kind="mergesort")
 

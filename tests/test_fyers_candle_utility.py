@@ -81,6 +81,23 @@ class FyersCandleUtilityTests(unittest.TestCase):
         self.assertEqual(candle[VOLUME_DATA], 4)
         self.assertEqual(candle[CANDLE_TYPE], "RED")
 
+    def test_builds_requested_fifteen_minute_buckets(self):
+        ticks = pd.DataFrame([
+            {"symbol": "NSE:TEST-EQ", "last_traded_time": epoch_ist(9, 15), "ltp": 10},
+            {"symbol": "NSE:TEST-EQ", "last_traded_time": epoch_ist(9, 29), "ltp": 12},
+            {"symbol": "NSE:TEST-EQ", "last_traded_time": epoch_ist(9, 30), "ltp": 11},
+        ])
+
+        candles = self.utility.build_5min_candles(
+            ticks, ["NSE:TEST-EQ"], interval_minutes=15)["NSE:TEST-EQ"]
+
+        self.assertEqual(candles[DATE_TIME].tolist(), [
+            pd.Timestamp("2026-10-27 09:15:00"),
+            pd.Timestamp("2026-10-27 09:30:00"),
+        ])
+        self.assertEqual(candles[OPEN_PRICE].tolist(), [10.0, 11.0])
+        self.assertEqual(candles[CLOSE_PRICE].tolist(), [12.0, 11.0])
+
     def test_partial_candle_is_returned_and_empty_input_has_schema(self):
         ticks = pd.DataFrame([
             {"symbol": "NSE:TEST-EQ", "last_traded_time": epoch_ist(9, 18),
