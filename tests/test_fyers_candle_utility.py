@@ -114,6 +114,17 @@ class FyersCandleUtilityTests(unittest.TestCase):
                          ["datetime64[ns]", "float64", "float64", "float64",
                           "float64", "int64", "object"])
 
+    def test_requested_symbols_exclude_unrelated_feed_ticks(self):
+        ticks = pd.DataFrame([
+            {"symbol": "NSE:TEST-EQ", "last_traded_time": epoch_ist(9, 15), "ltp": 10},
+            {"symbol": "NSE:OTHER-EQ", "last_traded_time": epoch_ist(9, 15), "ltp": 99},
+        ])
+
+        result = self.utility.build_5min_candles(ticks, ["NSE:TEST-EQ"])
+
+        self.assertEqual(list(result), ["NSE:TEST-EQ"])
+        self.assertEqual(result["NSE:TEST-EQ"][OPEN_PRICE].tolist(), [10.0])
+
     def test_ticks_outside_nse_session_are_ignored(self):
         ticks = pd.DataFrame([
             {"symbol": "NSE:TEST-EQ", "last_traded_time": epoch_ist(9, 14, 59), "ltp": 1},

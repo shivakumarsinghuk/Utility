@@ -110,14 +110,20 @@ class FyersCandleUtility:
         if p_df_ticks is None or p_df_ticks.empty or "symbol" not in p_df_ticks.columns:
             return {symbol: _empty_candle_data() for symbol in requested_symbols}
 
-        ticks = p_df_ticks.copy().reset_index(drop=True)
+        if requested_symbols:
+            ticks = p_df_ticks.loc[
+                p_df_ticks["symbol"].astype(str).isin(requested_symbols)
+            ].copy()
+        else:
+            ticks = p_df_ticks.copy()
+        ticks = ticks.reset_index(drop=True)
         ticks["_receive_order"] = range(len(ticks))
         ticks["_timestamp"] = ticks.apply(self._tick_timestamp, axis=1)
         ticks["ltp"] = pd.to_numeric(ticks.get("ltp"), errors="coerce")
         ticks = ticks.dropna(subset=["symbol", "_timestamp", "ltp"])
 
         symbols_in_ticks = list(dict.fromkeys(ticks["symbol"].astype(str).tolist()))
-        all_symbols = list(dict.fromkeys(requested_symbols + symbols_in_ticks))
+        all_symbols = requested_symbols or symbols_in_ticks
         if ticks.empty:
             return {symbol: _empty_candle_data() for symbol in all_symbols}
 

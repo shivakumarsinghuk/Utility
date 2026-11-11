@@ -2,15 +2,23 @@
 
 
 import threading
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 from BrokerUtility.pal.utility_manager import *
 import pandas as pd
 from DataTypes.defines import DATE_TIME
 from DataTypes.trade_data import quote_data
 
 from .fyers_candle_utility import FyersCandleUtility
+from .utility import generate_monthly_expiry_dates
+
+IST = ZoneInfo("Asia/Kolkata")
+NIFTY_OPTION_CHAIN_SYMBOL = "NIFTY50-INDEX"
+NIFTY_OPTIONS_PER_SIDE = 40
 
 class QuoteUtility:
-    """Poll REST quotes and optionally expose live FYERS ticks and candles."""
+    """Track NIFTY market data alongside caller-added stocks and optional live candles."""
 
     def __init__(self, p_interval=2, candle_source="broker", quote_source="broker"):
         self.trade_utility = None
@@ -40,6 +48,83 @@ class QuoteUtility:
     def set_trade_utility(self, p_trade_utility):
         if self.trade_utility is None:
             self.trade_utility = p_trade_utility
+            self._add_nifty_market_data()
+
+    def _add_nifty_market_data(self):
+        """Subscribe to the NIFTY index, front-month future, and near-ATM option wings."""
+        broker_utility = self.trade_utility.get_broker_utility()
+        get_index_request = getattr(broker_utility, "get_nifty_index_quote_request", None)
+        if not callable(get_index_request):
+            raise AttributeError("Broker utility does not expose get_nifty_index_quote_request")
+        get_future_name = getattr(broker_utility, "get_future_name", None)
+        if not callable(get_future_name):
+            raise AttributeError("Broker utility does not expose get_future_name")
+
+        chain_df, _, _ = self.get_option_chain_snapshot(NIFTY_OPTION_CHAIN_SYMBOL)
+        required_columns = {"symbol", "option_type", "ltp", "strike_price"}
+        if chain_df is None or chain_df.empty or not required_columns.issubset(chain_df.columns):
+            raise ValueError("NIFTY option chain is empty or missing required columns")
+
+        spot_rows = chain_df.loc[chain_df["option_type"].fillna("") == ""]
+        spot_prices = pd.to_numeric(spot_rows["ltp"], errors="coerce").dropna()
+        if spot_prices.empty:
+            strikes = pd.to_numeric(chain_df["strike_price"], errors="coerce").dropna()
+            if strikes.empty:
+                raise ValueError("NIFTY option chain has no usable spot price or strikes")
+            spot_price = float(strikes.median())
+        else:
+            spot_price = float(spot_prices.iloc[0])
+
+        option_market_type = getattr(broker_utility, "OPTION_MARKET_TYPE", "OPT")
+        symbols = []
+        market_types = []
+        initial_prices = {}
+        index_request = get_index_request()
+        symbols.append(index_request.symbol)
+        market_types.append(index_request.market_type)
+        if not spot_prices.empty and spot_price > 0:
+            initial_prices[index_request.symbol] = spot_price
+
+        trade_date = datetime.now(IST).replace(tzinfo=None)
+        expiry_dates = generate_monthly_expiry_dates(trade_date, 1)
+        expiry_dates += generate_monthly_expiry_dates(
+            datetime(trade_date.year + 1, 1, 1), 1)
+        future_expiry = next(
+            (expiry for expiry in expiry_dates
+             if datetime.strptime(expiry, "%d-%b-%Y").date() >= trade_date.date()),
+            None,
+        )
+        if future_expiry is None:
+            raise RuntimeError(f"Unable to resolve a future NIFTY monthly expiry from {trade_date.date()}")
+
+        symbols.append(get_future_name("NIFTY", future_expiry))
+        market_types.append("FUT")
+
+        selected_counts = {"CE": 0, "PE": 0}
+        for option_type in ("CE", "PE"):
+            candidates = chain_df.loc[chain_df["option_type"] == option_type].copy()
+            candidates["ltp"] = pd.to_numeric(candidates["ltp"], errors="coerce")
+            candidates["strike_price"] = pd.to_numeric(candidates["strike_price"], errors="coerce")
+            candidates = candidates.dropna(subset=["symbol", "ltp", "strike_price"])
+            candidates = candidates.loc[
+                (candidates["ltp"] > 0) & (candidates["symbol"].astype(str) != "")
+            ]
+            candidates["_atm_distance"] = (candidates["strike_price"] - spot_price).abs()
+            candidates = candidates.sort_values(
+                ["_atm_distance", "strike_price"], kind="mergesort")
+            for _, contract in candidates.head(NIFTY_OPTIONS_PER_SIDE).iterrows():
+                symbol = str(contract["symbol"]).split(":")[-1]
+                symbols.append(symbol)
+                market_types.append(option_market_type)
+                initial_prices[symbol] = float(contract["ltp"])
+                selected_counts[option_type] += 1
+
+        if not selected_counts["CE"] or not selected_counts["PE"]:
+            raise ValueError(f"NIFTY option chain has no usable CE/PE contracts: {selected_counts}")
+
+        self.add_stocks(symbols, market_types, p_initial_prices=initial_prices)
+        print("QuoteUtility: Subscribed NIFTY index, future, and option wings "
+              f"(CE={selected_counts['CE']}, PE={selected_counts['PE']})")
 
     def get_thread_info(self):
         return self.execute_thread
@@ -83,9 +168,12 @@ class QuoteUtility:
 
     def _add_stocks(self, p_lst_stocks, p_lst_market_type, p_initial_prices=None):
         lst_new_quote_requests = []
+        existing_stocks = set(self.lst_stocks)
+        existing_stocks.update(request.symbol for request in self.lst_get_quote_req)
         p_initial_prices = p_initial_prices or {}
         for index, stock in enumerate(p_lst_stocks):
-            if stock not in self.lst_stocks:
+            if stock not in existing_stocks:
+                existing_stocks.add(stock)
                 self.lst_stocks.append(stock)
                 obj_get_quotes_req_data = get_quote_request_data(p_symbol=stock, p_market_type=p_lst_market_type[index])
                 self.lst_get_quote_req.append(obj_get_quotes_req_data)
@@ -131,7 +219,12 @@ class QuoteUtility:
         data_websocket = self._get_data_websocket()
         if data_websocket is None:
             return {}
-        ticks = data_websocket.get_tick_data()
+        websocket_symbols = [
+            symbol for symbol in
+            (self._get_websocket_symbol(request) for request in self.lst_get_quote_req)
+            if symbol
+        ]
+        ticks = self._get_websocket_ticks(websocket_symbols, latest_only=True)
         if ticks is None or ticks.empty or "symbol" not in ticks.columns:
             return {}
 
@@ -222,7 +315,8 @@ class QuoteUtility:
             return self.fyers_candle_utility.build_5min_candles(pd.DataFrame(), [ticker])[ticker]
 
         candle_data = self.fyers_candle_utility.build_5min_candles(
-            self.get_tick_data(), [websocket_symbol], interval_minutes).get(websocket_symbol)
+            self._get_websocket_ticks([websocket_symbol]), [websocket_symbol],
+            interval_minutes).get(websocket_symbol)
         if candle_data is None or candle_data.empty:
             return self.fyers_candle_utility.build_5min_candles(
                 pd.DataFrame(), [websocket_symbol])[websocket_symbol]
@@ -272,6 +366,18 @@ class QuoteUtility:
             return pd.DataFrame()
         return self.data_websocket.get_tick_data()
 
+    def _get_websocket_ticks(self, symbols=None, latest_only=False):
+        """Use a broker's selective tick accessor when available, preserving older adapters."""
+        data_websocket = self._get_data_websocket()
+        if data_websocket is None:
+            return pd.DataFrame()
+        if symbols is not None:
+            accessor_name = "get_latest_tick_data" if latest_only else "get_tick_data_for_symbols"
+            accessor = getattr(data_websocket, accessor_name, None)
+            if callable(accessor):
+                return accessor(symbols)
+        return data_websocket.get_tick_data()
+
     def get_5min_candle_data(self):
         """Return candle frames keyed by the same bare symbols as REST quotes."""
         if self.data_websocket is None:
@@ -284,7 +390,7 @@ class QuoteUtility:
                 dict_quote_symbols[websocket_symbol] = quote_req_data.symbol
 
         dict_fyers_candles = self.fyers_candle_utility.build_5min_candles(
-            self.data_websocket.get_tick_data(), list(dict_quote_symbols))
+            self._get_websocket_ticks(list(dict_quote_symbols)), list(dict_quote_symbols))
         return {quote_symbol: dict_fyers_candles[websocket_symbol]
                 for websocket_symbol, quote_symbol in dict_quote_symbols.items()}
     
