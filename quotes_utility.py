@@ -6,9 +6,10 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from BrokerUtility.pal.utility_manager import *
+from BrokerUtility.broker_platform.kite.kite_utility import kite_utitlity
 import pandas as pd
 from DataTypes.defines import DATE_TIME
-from DataTypes.trade_data import quote_data
+from DataTypes.trade_data import get_quote_request_data, quote_data
 
 from .fyers_candle_utility import FyersCandleUtility
 from .utility import generate_monthly_expiry_dates
@@ -53,9 +54,7 @@ class QuoteUtility:
     def _add_nifty_market_data(self):
         """Subscribe to the NIFTY index, front-month future, and near-ATM option wings."""
         broker_utility = self.trade_utility.get_broker_utility()
-        get_index_request = getattr(broker_utility, "get_nifty_index_quote_request", None)
-        if not callable(get_index_request):
-            raise AttributeError("Broker utility does not expose get_nifty_index_quote_request")
+        index_request = self._get_nifty_index_quote_request(broker_utility)
         get_future_name = getattr(broker_utility, "get_future_name", None)
         if not callable(get_future_name):
             raise AttributeError("Broker utility does not expose get_future_name")
@@ -79,7 +78,6 @@ class QuoteUtility:
         symbols = []
         market_types = []
         initial_prices = {}
-        index_request = get_index_request()
         symbols.append(index_request.symbol)
         market_types.append(index_request.market_type)
         if not spot_prices.empty and spot_price > 0:
@@ -125,6 +123,16 @@ class QuoteUtility:
         self.add_stocks(symbols, market_types, p_initial_prices=initial_prices)
         print("QuoteUtility: Subscribed NIFTY index, future, and option wings "
               f"(CE={selected_counts['CE']}, PE={selected_counts['PE']})")
+
+    @staticmethod
+    def _get_nifty_index_quote_request(broker_utility):
+        get_index_request = getattr(broker_utility, "get_nifty_index_quote_request", None)
+        if callable(get_index_request):
+            return get_index_request()
+        if isinstance(broker_utility, kite_utitlity):
+            return get_quote_request_data("NIFTY", "")
+        raise AttributeError(
+            f"{type(broker_utility).__name__} does not expose get_nifty_index_quote_request")
 
     def get_thread_info(self):
         return self.execute_thread

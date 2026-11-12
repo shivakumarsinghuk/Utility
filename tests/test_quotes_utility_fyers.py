@@ -2,9 +2,11 @@
 """QuoteUtility integration tests using a fake Fyers data socket."""
 
 import unittest
+from unittest.mock import patch
 
 import pandas as pd
 
+from BrokerUtility.broker_platform.kite.kite_utility import kite_utitlity
 from DataTypes.trade_data import get_quote_request_data, quote_data
 from Utility.quotes_utility import QuoteUtility
 
@@ -190,6 +192,14 @@ class QuoteUtilityFyersTests(unittest.TestCase):
         self.assertEqual(len(puts), 40)
         self.assertIn("NSE:NIFTY50-INDEX", self.broker.data_websocket.subscribed)
         self.assertIn("NSE:NIFTY26NOVFUT", self.broker.data_websocket.subscribed)
+
+    def test_legacy_zerodha_adapter_uses_kite_index_symbol(self):
+        broker = kite_utitlity.__new__(kite_utitlity)
+        with patch.object(kite_utitlity, "get_nifty_index_quote_request", None):
+            request = QuoteUtility._get_nifty_index_quote_request(broker)
+
+        self.assertEqual(request.symbol, "NIFTY")
+        self.assertEqual(request.market_type, "")
 
     def test_remove_unsubscribes_and_symbol_can_be_added_again(self):
         self.quotes.add_stocks(["SBIN"], ["EQ"])
