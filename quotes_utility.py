@@ -6,6 +6,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from BrokerUtility.pal.utility_manager import *
+from BrokerUtility.broker_platform.fyers.fyers_utility import fyers_utitlity
 from BrokerUtility.broker_platform.kite.kite_utility import kite_utitlity
 import pandas as pd
 from DataTypes.defines import DATE_TIME
@@ -131,6 +132,8 @@ class QuoteUtility:
             return get_index_request()
         if isinstance(broker_utility, kite_utitlity):
             return get_quote_request_data("NIFTY", "")
+        if isinstance(broker_utility, fyers_utitlity):
+            return get_quote_request_data("NIFTY50-INDEX", "")
         raise AttributeError(
             f"{type(broker_utility).__name__} does not expose get_nifty_index_quote_request")
 

@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 import pandas as pd
 
+from BrokerUtility.broker_platform.fyers.fyers_utility import fyers_utitlity
 from BrokerUtility.broker_platform.kite.kite_utility import kite_utitlity
 from DataTypes.trade_data import get_quote_request_data, quote_data
 from Utility.quotes_utility import QuoteUtility
@@ -199,6 +200,14 @@ class QuoteUtilityFyersTests(unittest.TestCase):
             request = QuoteUtility._get_nifty_index_quote_request(broker)
 
         self.assertEqual(request.symbol, "NIFTY")
+        self.assertEqual(request.market_type, "")
+
+    def test_legacy_fyers_adapter_uses_fyers_index_symbol(self):
+        broker = fyers_utitlity.__new__(fyers_utitlity)
+        with patch.object(fyers_utitlity, "get_nifty_index_quote_request", None):
+            request = QuoteUtility._get_nifty_index_quote_request(broker)
+
+        self.assertEqual(request.symbol, "NIFTY50-INDEX")
         self.assertEqual(request.market_type, "")
 
     def test_remove_unsubscribes_and_symbol_can_be_added_again(self):
